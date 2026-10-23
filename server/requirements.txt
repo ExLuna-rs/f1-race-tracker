@@ -1,0 +1,9 @@
+# Backend for the web version. The desktop GUI packages are not needed here.
+fastf1>=3.8
+numpy
+pandas
+matplotlib
+fastapi>=0.110
+uvicorn[standard]>=0.29
+signalrcore>=1.0
+requests

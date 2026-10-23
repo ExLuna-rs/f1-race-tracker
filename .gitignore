@@ -22,3 +22,6 @@ still_frame.png
 .DS_Store
 .idea/
 .vscode/
+
+# Web server data (F1 TV token, live recordings)
+data/
