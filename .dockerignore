@@ -1,0 +1,7 @@
+.git
+.venv
+venv
+data
+computed_data
+.fastf1-cache
+**/__pycache__
