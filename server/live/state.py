@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 
 from src.lib.tyres import get_tyre_compound_int
 
-from server.live.feed import decode_z, deep_merge, topic_name
+from server.live.feed import as_list, decode_z, deep_merge, topic_name
 
 # CarData channel ids used by the feed
 CHANNEL_RPM = "0"
@@ -69,13 +69,47 @@ def _as_float(value, default=None):
         return default
 
 
+def _parse_duration(text):
+    """Parse 'HH:MM:SS' into seconds."""
+    try:
+        h, m, s = str(text).split(":")
+        return int(h) * 3600 + int(m) * 60 + float(s)
+    except (TypeError, ValueError):
+        return None
+
+
+def _format_duration(seconds):
+    seconds = max(int(seconds), 0)
+    return f"{seconds // 3600:02d}:{seconds // 60 % 60:02d}:{seconds % 60:02d}"
+
+
+def _race_control_message(message, time):
+    """Same keys as the replay pipeline's messages, plus the raw feed fields."""
+    out = dict(message)
+    out.update({
+        "time": time,
+        "category": str(message.get("Category", "")),
+        "message": str(message.get("Message", "")),
+        "flag": str(message.get("Flag", "")),
+        "scope": str(message.get("Scope", "")),
+        "sector": str(message.get("Sector", "")),
+        "racing_number": str(message.get("RacingNumber", "")),
+        "lap": _as_int(message.get("Lap"), None),
+    })
+    return out
+
+
 class LiveState:
     """Accumulates the feed and emits frames through `on_frame(t, frame)`."""
 
-    def __init__(self, on_frame=None, on_meta=None):
+    def __init__(self, on_frame=None, on_meta=None, circuit_provider=None):
         self.topics = {}
         self.on_frame = on_frame or (lambda t, frame: None)
         self.on_meta = on_meta or (lambda meta: None)
+        # circuit_provider(circuit_key, year) -> {"track", "rotation", "corners"}
+        self.circuit_provider = circuit_provider
+        self.circuit = None
+        self._circuit_requested = False
 
         self.positions = {}  # racing number -> {"x", "y", "status"}
         self.car_data = {}  # racing number -> channels dict
@@ -113,6 +147,8 @@ class LiveState:
                 self._meta_dirty = True
             if name == "TrackStatus":
                 self._record_track_status(utc)
+            if name == "SessionInfo":
+                self._load_circuit()
 
         if utc is not None and self._position_is_stale(utc):
             if (self.last_emit_utc is None
@@ -161,9 +197,27 @@ class LiveState:
         self.track_statuses.append({"status": status, "start_time": start, "end_time": None})
         self._meta_dirty = True
 
+    def _load_circuit(self):
+        if self._circuit_requested or self.circuit_provider is None:
+            return
+        info = self.topics.get("SessionInfo") or {}
+        key = ((info.get("Meeting") or {}).get("Circuit") or {}).get("Key")
+        year = _as_int(str(info.get("StartDate") or info.get("Path") or "")[:4], None)
+        if key is None or year is None:
+            return
+        self._circuit_requested = True
+        try:
+            self.circuit = self.circuit_provider(key, year)
+        except Exception:
+            self.circuit = None
+        if self.circuit:
+            self._meta_dirty = True
+
     def _trace_lap(self, number, x, y):
         """Use the first clean lap any car completes as the track outline."""
         if self.track is not None or x is None or y is None:
+            return
+        if self.circuit and self.circuit.get("track"):
             return
         line = self._timing_line(number)
         lap = _as_int(line.get("NumberOfLaps"), -1)
@@ -186,6 +240,8 @@ class LiveState:
     def _t(self, utc):
         if self.origin_utc is None:
             self.origin_utc = utc
+            # Race control message times are relative to the origin
+            self._meta_dirty = True
         return round((utc - self.origin_utc).total_seconds(), 3)
 
     def _timing_line(self, number):
@@ -201,12 +257,34 @@ class LiveState:
         numbers |= set(self.positions.keys())
         return sorted((n for n in numbers if n.isdigit()), key=int)
 
-    def build_frame(self, t):
+    def _clock_at(self, utc):
+        """Session time remaining, extrapolated like the official timing screen."""
+        clock = self.topics.get("ExtrapolatedClock") or {}
+        remaining = _parse_duration(clock.get("Remaining"))
+        if remaining is None:
+            return ""
+        since = parse_utc(clock.get("Utc"))
+        if clock.get("Extrapolating") and since is not None and utc is not None:
+            remaining -= max((utc - since).total_seconds(), 0)
+        return _format_duration(remaining)
+
+    def _session_status(self):
+        status = (self.topics.get("SessionStatus") or {}).get("Status")
+        if status:
+            return status
+        # Recordings started mid-session only have the SessionData history
+        series = as_list((self.topics.get("SessionData") or {}).get("StatusSeries"))
+        for entry in reversed(series):
+            if isinstance(entry, dict) and entry.get("SessionStatus"):
+                return entry["SessionStatus"]
+        return ""
+
+    def build_frame(self, t, utc=None):
         drivers = {}
         app_lines = (self.topics.get("TimingAppData") or {}).get("Lines") or {}
         for number in self._driver_numbers():
             line = self._timing_line(number)
-            stints = (app_lines.get(number) or {}).get("Stints") or []
+            stints = as_list((app_lines.get(number) or {}).get("Stints"))
             stint = stints[-1] if stints else {}
             if not isinstance(stint, dict):
                 stint = {}
@@ -241,9 +319,8 @@ class LiveState:
                 "interval": _value(interval),
                 "last_lap": _value(line.get("LastLapTime")),
                 "best_lap": _value(line.get("BestLapTime")),
-                "sectors": [_value(s) for s in (line.get("Sectors") or [])
-                            if isinstance(s, (dict, str))]
-                if isinstance(line.get("Sectors"), list) else [],
+                "sectors": [_value(s) for s in as_list(line.get("Sectors"))
+                            if isinstance(s, (dict, str))],
             }
 
         lap_count = self.topics.get("LapCount") or {}
@@ -254,8 +331,8 @@ class LiveState:
             "lap": _as_int(lap_count.get("CurrentLap"), leader_lap),
             "drivers": drivers,
             "track_status": str((self.topics.get("TrackStatus") or {}).get("Status", "")),
-            "session_status": (self.topics.get("SessionStatus") or {}).get("Status", ""),
-            "clock": (self.topics.get("ExtrapolatedClock") or {}).get("Remaining", ""),
+            "session_status": self._session_status(),
+            "clock": self._clock_at(utc),
         }
         if weather:
             rain = _as_float(weather.get("Rainfall"), 0.0)
@@ -272,7 +349,7 @@ class LiveState:
     def _emit(self, utc):
         self.last_emit_utc = utc
         t = self._t(utc)
-        self.on_frame(t, self.build_frame(t))
+        self.on_frame(t, self.build_frame(t, utc))
 
     # Metadata -----------------------------------------------------------
 
@@ -303,12 +380,19 @@ class LiveState:
                     "laps": _as_int(s.get("TotalLaps"), 0),
                     "start_laps": _as_int(s.get("StartLaps"), 0),
                 }
-                for s in (line or {}).get("Stints") or [] if isinstance(s, dict)
+                for s in as_list((line or {}).get("Stints")) if isinstance(s, dict)
             ]
 
-        messages = (self.topics.get("RaceControlMessages") or {}).get("Messages") or []
-        if isinstance(messages, dict):
-            messages = [messages[k] for k in sorted(messages, key=_as_int)]
+        messages = []
+        for message in as_list((self.topics.get("RaceControlMessages") or {}).get("Messages")):
+            if not isinstance(message, dict):
+                continue
+            sent = parse_utc(message.get("Utc"))
+            time = None
+            if sent is not None and self.origin_utc is not None:
+                time = round((sent - self.origin_utc).total_seconds(), 3)
+            messages.append(_race_control_message(message, time))
+        circuit = self.circuit or {}
 
         return {
             "session": {
@@ -321,10 +405,13 @@ class LiveState:
             },
             "drivers": drivers,
             "total_laps": _as_int((self.topics.get("LapCount") or {}).get("TotalLaps"), 0),
-            "race_control_messages": [m for m in messages if isinstance(m, dict)],
+            "race_control_messages": messages,
             "track_statuses": [dict(s) for s in self.track_statuses],
             "stints": stints,
-            "track": self.track,
+            "track": circuit.get("track") or self.track,
+            "rotation": circuit.get("rotation", 0.0),
+            "corners": circuit.get("corners", []),
+            "origin_utc": self.origin_utc.isoformat() if self.origin_utc else None,
         }
 
     def _flush_meta(self):

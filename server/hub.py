@@ -8,6 +8,7 @@ import re
 import threading
 from datetime import datetime, timezone
 
+from server.circuit import CircuitProvider
 from server.live.client import LiveClient, Recorder, read_recording
 from server.live.state import LiveState
 from server.timeline import Timeline
@@ -24,6 +25,7 @@ class Hub:
         os.makedirs(self.recordings_dir, exist_ok=True)
         self.token_store = token_store
         self.sample_hz = sample_hz
+        self.circuits = CircuitProvider(os.path.join(data_dir, "circuits"))
 
         self.timeline = Timeline("replay")
         self.timeline.set_meta({})
@@ -39,7 +41,8 @@ class Hub:
             if self.client is not None:
                 return
             timeline = Timeline("live", min_interval_s=1 / self.sample_hz)
-            state = LiveState(on_frame=timeline.add_frame, on_meta=timeline.set_meta)
+            state = LiveState(on_frame=timeline.add_frame, on_meta=timeline.set_meta,
+                              circuit_provider=self.circuits)
             name = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H-%M-%SZ") + ".jsonl"
             recorder = Recorder(os.path.join(self.recordings_dir, name))
             self.client = LiveClient(state.apply, self.token_store.get, recorder)
@@ -70,7 +73,7 @@ class Hub:
         path = os.path.join(self.recordings_dir, name)
         if not os.path.exists(path):
             raise FileNotFoundError(name)
-        self._load_in_background(f"recording {name}", lambda: timeline_from_recording(path, self.sample_hz))
+        self._load_in_background(f"recording {name}", lambda: timeline_from_recording(path, self.sample_hz, self.circuits))
 
     def load_replay(self, year, round_number, session_type):
         from server.replay import build_replay_timeline
@@ -115,10 +118,11 @@ class Hub:
         }
 
 
-def timeline_from_recording(path, sample_hz=4):
+def timeline_from_recording(path, sample_hz=4, circuit_provider=None):
     """Rebuild a timeline by running a recorded feed through the live parser."""
     timeline = Timeline("recording", min_interval_s=1 / sample_hz)
-    state = LiveState(on_frame=timeline.add_frame, on_meta=timeline.set_meta)
+    state = LiveState(on_frame=timeline.add_frame, on_meta=timeline.set_meta,
+                      circuit_provider=circuit_provider)
     for topic, data, utc in read_recording(path):
         try:
             state.apply(topic, data, utc)

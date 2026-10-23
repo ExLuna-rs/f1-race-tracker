@@ -33,6 +33,18 @@ def _status_at(track_statuses, t):
     return status
 
 
+def _corners(session):
+    try:
+        corners = session.get_circuit_info().corners
+        return [
+            {"number": int(c["Number"]), "letter": str(c.get("Letter") or ""),
+             "x": float(c["X"]), "y": float(c["Y"]), "angle": float(c.get("Angle") or 0)}
+            for _, c in corners.iterrows()
+        ]
+    except Exception:
+        return []
+
+
 def _track_outline(session):
     try:
         pos = session.laps.pick_fastest().get_pos_data()
@@ -114,6 +126,7 @@ def build_replay_timeline(year, round_number, session_type="R", sample_hz=4):
         "stints": _stints(session),
         "track": _track_outline(session),
         "rotation": rotation,
+        "corners": _corners(session),
         "max_tyre_life": data.get("max_tyre_life", {}),
     })
     return timeline
