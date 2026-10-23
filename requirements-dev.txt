@@ -2,3 +2,5 @@
 
 pytest
 pytest-mock
+-r server/requirements.txt
+httpx

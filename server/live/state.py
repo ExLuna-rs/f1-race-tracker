@@ -37,7 +37,8 @@ def parse_utc(value):
     text = value.rstrip("Z")
     if "." in text:
         head, frac = text.split(".", 1)
-        text = f"{head}.{frac[:6]}"
+        # Python 3.10 only accepts 3 or 6 fractional digits
+        text = f"{head}.{frac[:6].ljust(6, '0')}"
     try:
         parsed = datetime.fromisoformat(text)
     except ValueError:

@@ -98,3 +98,7 @@ def test_meta_lists_drivers_and_session():
         "team": "Red Bull Racing", "color": "#3671C6",
     }
     assert meta["track_statuses"][0]["status"] == "1"
+
+
+def test_parse_utc_pads_short_fractions():
+    assert parse_utc("2025-03-16T04:03:12.1Z").microsecond == 100000
