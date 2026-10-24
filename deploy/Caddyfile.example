@@ -1,0 +1,18 @@
+# Route for the F1 tracker. Cloudflare Tunnel points at Caddy, so Caddy only
+# needs plain HTTP here; replace the host with your own.
+#
+# If Caddy runs in Docker, put it on the same network as the compose project
+# and use api:8000 / web:3000 instead of localhost.
+http://f1.example.com {
+	encode zstd gzip
+
+	handle /api/* {
+		reverse_proxy localhost:8000
+	}
+	handle /ws {
+		reverse_proxy localhost:8000
+	}
+	handle {
+		reverse_proxy localhost:3000
+	}
+}

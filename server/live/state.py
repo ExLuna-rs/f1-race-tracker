@@ -373,15 +373,23 @@ class LiveState:
         app_lines = (self.topics.get("TimingAppData") or {}).get("Lines") or {}
         stints = {}
         for number, line in app_lines.items():
-            stints[self.driver_code(number)] = [
-                {
+            # Same shape as replays: laps driven in the stint, tyre age at the
+            # start, and the lap the stint started on
+            driver_stints, start_lap = [], 1
+            for s in as_list((line or {}).get("Stints")):
+                if not isinstance(s, dict):
+                    continue
+                age_at_start = _as_int(s.get("StartLaps"), 0)
+                laps = max(_as_int(s.get("TotalLaps"), 0) - age_at_start, 0)
+                driver_stints.append({
                     "compound": s.get("Compound", ""),
                     "new": str(s.get("New", "")).lower() == "true",
-                    "laps": _as_int(s.get("TotalLaps"), 0),
-                    "start_laps": _as_int(s.get("StartLaps"), 0),
-                }
-                for s in as_list((line or {}).get("Stints")) if isinstance(s, dict)
-            ]
+                    "laps": laps,
+                    "start_laps": age_at_start,
+                    "start_lap": start_lap,
+                })
+                start_lap += laps
+            stints[self.driver_code(number)] = driver_stints
 
         messages = []
         for message in as_list((self.topics.get("RaceControlMessages") or {}).get("Messages")):

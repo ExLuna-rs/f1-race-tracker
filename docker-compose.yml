@@ -1,0 +1,29 @@
+# Backend and web frontend. Caddy sends /api and /ws to `api` and everything
+# else to `web`, see deploy/Caddyfile.example and docs/WebServer.md.
+services:
+  api:
+    build:
+      context: .
+      dockerfile: server/Dockerfile
+    restart: unless-stopped
+    environment:
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?Set ADMIN_PASSWORD in .env}
+      LIVE_AUTOSTART: ${LIVE_AUTOSTART:-0}
+    volumes:
+      - f1-data:/data
+    ports:
+      - "127.0.0.1:8000:8000"
+
+  web:
+    build:
+      context: web
+      args:
+        API_URL: http://api:8000
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - "127.0.0.1:3000:3000"
+
+volumes:
+  f1-data:

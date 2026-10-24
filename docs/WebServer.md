@@ -106,11 +106,26 @@ The browser controls its own playback with:
 {"type": "live"}            // jump back to the live edge
 ```
 
+## Importing a FastF1 live timing file
+
+FastF1 can record the feed itself (`python -m fastf1.livetiming save out.txt`).
+Those files use a different line format, so convert them before loading:
+
+```bash
+python -m server.import_recording out.txt data/recordings/2025-bahrain-fp3.jsonl
+```
+
+## Circuit outline
+
+The live feed sends no track outline, so the server fetches the circuit from
+`api.multiviewer.app` — the same source FastF1 uses for
+`Session.get_circuit_info()`, in the same coordinates as `Position.z`. The
+result is cached in `$F1_DATA_DIR/circuits`. If the fetch fails the map falls
+back to the first clean lap any car completes.
+
 ## Known limits
 
-- The live track outline appears once the first car completes a clean lap.
-  Replays use the fastest lap's outline straight away.
 - Replays only support races and sprints for now. Qualifying and practice work
   live and from recordings.
-- The live parser follows the feed format used by FastF1 and was tested with
-  synthetic data. It still needs a check against a real session.
+- The live parser was checked against the 2021 Bahrain FP3 feed from FastF1's
+  test data. A live session with an F1 TV token has still not been tried.
