@@ -51,6 +51,12 @@ class Hub:
             self.client.start()
             logger.info("Live timing started, recording to %s", name)
 
+    def reconnect_live(self):
+        """Reconnect with the current token, e.g. after it was renewed."""
+        with self._lock:
+            if self.client is not None:
+                self.client.reconnect()
+
     def stop_live(self):
         with self._lock:
             if self.client is None:
@@ -115,6 +121,8 @@ class Hub:
             "live_error": self.client.last_error if self.client else None,
             "loading": self.loading,
             "error": self.error,
+            # Expiry only, never the token itself, so the site can warn
+            "token": self.token_store.status(),
         }
 
 

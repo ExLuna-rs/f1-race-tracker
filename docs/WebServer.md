@@ -40,7 +40,11 @@ telemetry (`CarData.z`) to F1 TV subscribers (Access, Pro or Premium). Timing,
 tyres, race control, track status and weather work without a token.
 
 The token is the `subscriptionToken` inside the formula1.com login cookie and
-lasts about a week. To get it, either:
+lasts about a week.
+
+The easiest way to keep it fresh is the browser extension in
+[`extension/`](../extension/README.md): it sends the cookie to the server every
+time it changes. Otherwise, get it by hand, either:
 
 1. Log in on formula1.com, open the browser dev tools, and copy the value of
    the `login-session` cookie. Paste the whole value: the server extracts the
@@ -57,8 +61,10 @@ curl -X PUT http://localhost:8000/api/admin/token \
   -d '{"token": "<token or cookie value>"}'
 ```
 
-`GET /api/admin/token` shows whether a token is stored and when it expires.
-Restart live timing (`stop` then `start`) after changing the token.
+`GET /api/admin/token` shows whether a token is stored and when it expires;
+`/api/status` includes the same (never the token itself) so the site can warn
+before it expires. When a different token is stored while live timing runs,
+the server reconnects with it straight away.
 
 ## HTTP API
 

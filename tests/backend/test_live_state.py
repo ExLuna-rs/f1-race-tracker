@@ -173,3 +173,33 @@ def test_circuit_provider_supplies_outline_and_rotation():
     assert metas[-1]["track"] == [[0, 0], [1, 1]]
     assert metas[-1]["rotation"] == 90.0
     assert state.track is None  # no lap tracing needed
+
+
+def test_reconnect_reconnects_straight_away():
+    import threading
+    import time as _time
+
+    from server.live.client import LiveClient
+
+    connects = []
+    connected_twice = threading.Event()
+    client = LiveClient(lambda *args: None)
+
+    def fake_connect():
+        connects.append(client.token_provider())
+        client.connected = True
+        client._t_last_message = _time.time()
+        if len(connects) == 2:
+            connected_twice.set()
+
+    client._connect = fake_connect
+    client._disconnect = lambda: setattr(client, "connected", False)
+    client.start()
+    try:
+        while not connects:
+            _time.sleep(0.01)
+        client.reconnect()
+        # Well under the 5 s backoff used after a failure
+        assert connected_twice.wait(2.5)
+    finally:
+        client._stop.set()

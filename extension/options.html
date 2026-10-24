@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <title>F1 Race Tracker – token F1 TV</title>
+  <style>
+    body { font: 14px/1.5 system-ui, sans-serif; max-width: 520px; margin: 32px auto; padding: 0 16px; color: #1c1f26; }
+    h1 { font-size: 18px; }
+    label { display: block; margin: 14px 0 4px; font-weight: 600; }
+    input { width: 100%; box-sizing: border-box; padding: 7px 9px; font: inherit; }
+    button { margin-top: 16px; padding: 7px 14px; font: inherit; cursor: pointer; }
+    .hint { color: #5b616c; font-size: 13px; }
+    #result { margin-top: 18px; padding: 10px 12px; border-radius: 6px; background: #eef1f5; }
+    #result.ok { background: #e3f6ea; }
+    #result.error { background: #fbe4e4; }
+  </style>
+</head>
+<body>
+  <h1>Token F1 TV automatique</h1>
+  <p class="hint">
+    Restez connecté sur formula1.com avec le compte F1 TV : à chaque nouveau token, cette extension
+    l'envoie à votre serveur, qui relance le direct avec. Votre mot de passe formula1.com ne quitte
+    jamais le navigateur.
+  </p>
+  <form id="form">
+    <label for="serverUrl">Adresse du tracker</label>
+    <input id="serverUrl" type="url" placeholder="https://f1.example.com" required>
+    <label for="password">Mot de passe admin du tracker</label>
+    <input id="password" type="password" required>
+    <button type="submit">Enregistrer et envoyer maintenant</button>
+  </form>
+  <div id="result" hidden></div>
+  <script src="options.js"></script>
+</body>
+</html>

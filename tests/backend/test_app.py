@@ -88,3 +88,24 @@ def test_websocket_streams_meta_then_frames(server, tmp_path):
             if frame["type"] == "frame" and frame["frame"]["t"] >= 50:
                 break
         assert frame["frame"]["t"] >= 50
+
+
+def test_new_token_reconnects_live_timing(server, monkeypatch):
+    app_module, client = server
+    calls = []
+    monkeypatch.setattr(app_module.hub, "reconnect_live", lambda: calls.append(1))
+    headers = {"X-Admin-Password": "secret"}
+    token = "header.eyJleHAiOiAxfQ.signature"  # {"exp": 1}
+
+    assert client.put("/api/admin/token", json={"token": token}, headers=headers).json()["changed"]
+    assert not client.put("/api/admin/token", json={"token": token}, headers=headers).json()["changed"]
+    assert calls == [1]
+
+
+def test_status_shows_token_expiry_but_not_the_token(server):
+    _, client = server
+    token = "header.eyJleHAiOiAxfQ.signature"
+    client.put("/api/admin/token", json={"token": token}, headers={"X-Admin-Password": "secret"})
+    status = client.get("/api/status").json()
+    assert status["token"] == {"present": True, "expires_at": 1, "expired": True}
+    assert token not in json.dumps(status)

@@ -36,6 +36,8 @@ browser's local storage only. The tracker page needs no password.
   driver, with the last 90 seconds as a chart, plus sector times.
 - **Tyre strategy**: a stint bar per driver, only up to the lap being watched.
 - **Race control**: the messages announced up to that point, newest first.
+- **Token warning**: a banner when the F1 TV token expires within two days,
+  has expired, or is missing while live timing runs.
 
 Qualifying and practice sessions show best lap times instead of last lap times
 and drop the lap counter.

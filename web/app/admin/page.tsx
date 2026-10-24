@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import type { Status } from "@/lib/types";
+import type { Status, TokenStatus } from "@/lib/types";
 
 const PASSWORD_KEY = "f1-admin-password";
 
@@ -11,12 +11,6 @@ interface Weekend {
   event_name: string;
   date: string;
   type: string;
-}
-
-interface TokenStatus {
-  present: boolean;
-  expires_at: number | null;
-  expired: boolean | null;
 }
 
 function readPassword() {
@@ -191,7 +185,7 @@ export default function Admin() {
               run(async () => {
                 await call("/api/admin/token", "PUT", { token: tokenInput });
                 setTokenInput("");
-              }, "Token enregistré. Redémarrez le direct pour l'utiliser.")
+              }, "Token enregistré. Le direct, s'il tourne, se reconnecte avec.")
             }
           >
             Enregistrer
@@ -201,9 +195,10 @@ export default function Admin() {
           </button>
         </div>
         <p className="hint">
-          Connectez-vous sur formula1.com avec le compte F1 TV, ouvrez les outils de développement, onglet
-          Application → Cookies, et copiez la valeur de <code>login-session</code>. Le token dure environ une
-          semaine.
+          Le plus simple : l&apos;extension de navigateur du dossier <code>extension/</code> du dépôt envoie le
+          token toute seule dès que vous êtes connecté sur formula1.com. Sinon, à la main : connectez-vous sur
+          formula1.com avec le compte F1 TV, ouvrez les outils de développement, onglet Application → Cookies, et
+          copiez la valeur de <code>login-session</code>. Le token dure environ une semaine.
         </p>
       </section>
 

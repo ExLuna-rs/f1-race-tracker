@@ -100,9 +100,14 @@ def token_status():
 @app.put("/api/admin/token", dependencies=[Depends(require_admin)])
 def set_token(body: TokenBody):
     try:
-        return token_store.set(body.token)
+        result = token_store.set(body.token)
     except ValueError as e:
         raise HTTPException(400, str(e))
+    if result["changed"]:
+        # The browser extension sends the token whenever the cookie changes,
+        # so a renewed token is used without anyone restarting live timing
+        hub.reconnect_live()
+    return result
 
 
 @app.delete("/api/admin/token", dependencies=[Depends(require_admin)])

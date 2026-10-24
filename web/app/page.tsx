@@ -5,6 +5,7 @@ import Controls from "@/components/Controls";
 import DriverPanel from "@/components/DriverPanel";
 import Header from "@/components/Header";
 import Leaderboard from "@/components/Leaderboard";
+import TokenWarning from "@/components/TokenWarning";
 import RaceControl from "@/components/RaceControl";
 import TrackMap from "@/components/TrackMap";
 import TyreStrategy from "@/components/TyreStrategy";
@@ -34,6 +35,7 @@ export default function Viewer() {
   return (
     <div className="app">
       <Header meta={meta} frame={frame} playback={playback} connected={connected} kind={kind} />
+      <TokenWarning />
       <main className="main">
         <section className="panel map-panel">
           <TrackMap meta={meta} motion={motion} selected={selected} onSelect={select} />

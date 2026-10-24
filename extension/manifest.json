@@ -1,0 +1,26 @@
+{
+  "manifest_version": 3,
+  "name": "F1 Race Tracker – token F1 TV",
+  "version": "1.0.0",
+  "description": "Envoie le token F1 TV de formula1.com à votre serveur F1 Race Tracker dès qu'il change.",
+  "permissions": ["cookies", "storage", "alarms"],
+  "host_permissions": ["https://*.formula1.com/*"],
+  "optional_host_permissions": ["https://*/*", "http://*/*"],
+  "background": {
+    "service_worker": "background.js",
+    "scripts": ["background.js"]
+  },
+  "options_ui": {
+    "page": "options.html",
+    "open_in_tab": true
+  },
+  "action": {
+    "default_title": "F1 Race Tracker"
+  },
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "f1-race-tracker@exluna",
+      "strict_min_version": "121.0"
+    }
+  }
+}
