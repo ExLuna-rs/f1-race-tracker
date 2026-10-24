@@ -27,16 +27,18 @@ jobs:
       - name: Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libegl1 libgl1 libxkbcommon-x11-0 libxcb-cursor0
+          sudo apt-get install -y libegl1 libgl1 libxkbcommon-x11-0 libxcb-cursor0 xvfb
 
       - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
           python -m pip install -r requirements-dev.txt
 
+      # Under a virtual display, so the desktop windows that switch matplotlib
+      # to QtAgg on import can do so after another module loaded pyplot
       - name: Run tests
         run: |
-          python -m pytest
+          xvfb-run -a python -m pytest
 
   web:
     name: Web frontend

@@ -6,14 +6,6 @@ are identical to the ones the Arcade replay draws. The archive is free and
 includes car positions, no F1 TV token needed.
 """
 
-from src.f1_data import (
-    enable_cache,
-    get_circuit_rotation,
-    get_driver_colors,
-    get_race_telemetry,
-    load_session,
-)
-
 from server.timeline import Timeline
 
 REPLAY_SESSION_TYPES = ("R", "S")
@@ -89,6 +81,16 @@ def _driver_info(session, colors):
 
 
 def build_replay_timeline(year, round_number, session_type="R", sample_hz=4):
+    # Imported here so the API starts without loading FastF1 and matplotlib's
+    # pyplot, which also kept the desktop GUI modules from picking QtAgg in tests
+    from src.f1_data import (
+        enable_cache,
+        get_circuit_rotation,
+        get_driver_colors,
+        get_race_telemetry,
+        load_session,
+    )
+
     if session_type not in REPLAY_SESSION_TYPES:
         raise ValueError("Replays currently support races (R) and sprints (S)")
 
