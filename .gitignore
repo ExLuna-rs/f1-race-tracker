@@ -25,3 +25,4 @@ still_frame.png
 
 # Web server data (F1 TV token, live recordings)
 data/
+.env

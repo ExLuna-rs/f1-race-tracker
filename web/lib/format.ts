@@ -65,6 +65,21 @@ export function estimatedGap(driver: DriverFrame, leader: DriverFrame | undefine
   return `+${seconds.toFixed(1)}`;
 }
 
+const SESSION_NAMES: Record<string, string> = {
+  Race: "Course",
+  Sprint: "Sprint",
+  Qualifying: "Qualifications",
+  "Sprint Qualifying": "Qualifications sprint",
+  "Sprint Shootout": "Qualifications sprint",
+  "Practice 1": "Essais libres 1",
+  "Practice 2": "Essais libres 2",
+  "Practice 3": "Essais libres 3",
+};
+
+export function sessionLabel(name: string) {
+  return SESSION_NAMES[name] ?? name;
+}
+
 export function shortGap(value?: string) {
   if (!value) return "";
   // The feed writes lapped cars as "1L" or "+1 LAP"

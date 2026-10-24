@@ -21,6 +21,19 @@ class Timeline:
         self._frames = []
         self._lock = threading.Lock()
 
+    @classmethod
+    def from_parts(cls, mode, min_interval_s, times, frames, meta):
+        """Rebuild a timeline from the frame times, frame JSON and meta of another one."""
+        timeline = cls(mode, min_interval_s)
+        timeline._times, timeline._frames = times, frames
+        timeline.set_meta(meta)
+        return timeline
+
+    def parts(self):
+        """Copies of the frame times and frame JSON, for saving."""
+        with self._lock:
+            return list(self._times), list(self._frames)
+
     def add_frame(self, t, frame):
         """Store a frame, dropping it if it is too close to the previous one."""
         with self._lock:
@@ -42,6 +55,13 @@ class Timeline:
 
     def __len__(self):
         return len(self._times)
+
+    def frames_between(self, t0, t1, limit=64):
+        """JSON of the frames after t0 and before t1, the most recent `limit` of them."""
+        with self._lock:
+            start = bisect.bisect_right(self._times, t0)
+            end = bisect.bisect_left(self._times, t1)
+            return self._frames[max(start, end - limit):end]
 
     def frame_at(self, t):
         """Return (frame_time, frame_json) for the latest frame at or before t."""

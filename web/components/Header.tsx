@@ -1,4 +1,5 @@
 import Link from "next/link";
+import type { ReactNode } from "react";
 import { TRACK_STATUS, type SessionKind } from "@/lib/format";
 import type { Frame, Meta, PlaybackState } from "@/lib/types";
 
@@ -10,16 +11,17 @@ interface Props {
   playback: PlaybackState | null;
   connected: boolean;
   kind: SessionKind;
+  nav: ReactNode;
 }
 
-export default function Header({ meta, frame, playback, connected, kind }: Props) {
+export default function Header({ meta, frame, playback, connected, kind, nav }: Props) {
   const session = meta.session;
   const status = TRACK_STATUS[frame?.track_status ?? ""];
   const weather = frame?.weather;
   const mode = playback?.mode;
   const title = session?.meeting
     ? `${session.meeting}${session.name ? ` · ${session.name}` : ""}`
-    : session?.name || "Aucune session chargée";
+    : session?.name || "Chargement…";
 
   return (
     <header className="header">
@@ -50,6 +52,7 @@ export default function Header({ meta, frame, playback, connected, kind }: Props
             {weather.rain_state === "RAINING" ? " · Pluie" : ""}
           </span>
         )}
+        {nav}
         <span className={`dot${connected ? " on" : ""}`} title={connected ? "Connecté" : "Déconnecté"} />
         <Link href="/admin" className="admin-link">
           Admin

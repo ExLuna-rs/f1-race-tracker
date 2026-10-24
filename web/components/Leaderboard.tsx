@@ -24,11 +24,14 @@ function Tyre({ driver }: { driver: DriverFrame }) {
   const tyre = TYRES[Math.round(driver.tyre)];
   if (!tyre) return <span />;
   return (
-    <span className="tyre-cell" title={tyre.name}>
-      <span className="tyre" style={{ borderColor: tyre.color, color: tyre.color }}>
-        {tyre.label}
-      </span>
-      {driver.tyre_life != null && <span className="tyre-age">{Math.round(driver.tyre_life)}</span>}
+    // Just the letter in the compound's colour, like F1's timing screens.
+    // The tyre's age stays in the tooltip.
+    <span
+      className="tyre"
+      style={{ color: tyre.color }}
+      title={driver.tyre_life != null ? `${tyre.name}, ${Math.round(driver.tyre_life)} tours` : tyre.name}
+    >
+      {tyre.label}
     </span>
   );
 }
@@ -52,8 +55,10 @@ export default function Leaderboard({ meta, frame, kind, selected, onSelect }: P
           onClick={() => setShowInterval((v) => !v)}
           disabled={!isRace}
           title={isRace ? "Basculer écart au leader / intervalle" : undefined}
+          aria-label={isRace ? `${gapLabel} : afficher ${showInterval ? "l'écart au leader" : "l'intervalle"}` : undefined}
         >
           {gapLabel}
+          {isRace && <span className="lb-gap-icon" aria-hidden>⇄</span>}
         </button>
         <span>{isRace ? "Dernier" : "Meilleur"}</span>
         <span>Pneu</span>

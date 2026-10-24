@@ -203,3 +203,26 @@ def test_reconnect_reconnects_straight_away():
         assert connected_twice.wait(2.5)
     finally:
         client._stop.set()
+
+
+def test_qualifying_gaps_come_from_the_current_part():
+    frames = []
+    state = LiveState(on_frame=lambda t, f: frames.append(f))
+    # Qualifying lines have no race gaps at all
+    for message in initial_messages():
+        if message[0] != "TimingData":
+            state.apply(*message)
+    state.apply("TimingData", {"SessionPart": 2, "Lines": {
+        "1": {"Stats": [
+            {"TimeDiffToFastest": "+0.100", "TimeDifftoPositionAhead": "+0.100"},
+            {"TimeDiffToFastest": "+0.250", "TimeDifftoPositionAhead": "+0.050"},
+        ]},
+        # Out in Q1: keeps the Q1 gap
+        "44": {"Stats": [{"TimeDiffToFastest": "+1.500", "TimeDifftoPositionAhead": "+0.300"},
+                         {"TimeDiffToFastest": "", "TimeDifftoPositionAhead": ""}]},
+    }}, utc(1))
+    frame = state.build_frame(1.0, None)
+    assert frame["drivers"]["VER"]["gap"] == "+0.250"
+    assert frame["drivers"]["VER"]["interval"] == "+0.050"
+    assert frame["drivers"]["HAM"]["gap"] == "+1.500"
+    assert frame["drivers"]["HAM"]["interval"] == "+0.300"

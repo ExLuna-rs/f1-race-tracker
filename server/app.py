@@ -14,12 +14,14 @@ import asyncio
 import hmac
 import json
 import os
+import time
 
 from fastapi import Depends, FastAPI, Header, HTTPException, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
 
 from server.hub import Hub
 from server.replay import REPLAY_SESSION_TYPES
+from server.schedule import next_session
 from server.token_store import TokenStore
 from server.viewer import Viewer
 
@@ -61,7 +63,7 @@ def status():
 
 @app.get("/api/meta")
 def meta():
-    return hub.timeline.meta
+    return hub.live_timeline.meta
 
 
 @app.get("/api/schedule/{year}")
@@ -74,6 +76,29 @@ def schedule(year: int):
 @app.get("/api/recordings")
 def recordings():
     return hub.list_recordings()
+
+
+@app.get("/api/library")
+def library():
+    return hub.library.list()
+
+
+# The calendar barely changes, and loading it takes FastF1 a while
+NEXT_SESSION_TTL_S = 3600
+_next_session = {"at": 0.0, "value": None}
+
+
+@app.get("/api/next")
+def upcoming():
+    from src.f1_data import get_race_weekends_by_year
+
+    if time.monotonic() - _next_session["at"] > NEXT_SESSION_TTL_S:
+        try:
+            _next_session["value"] = next_session(get_race_weekends_by_year)
+        except Exception:
+            _next_session["value"] = None
+        _next_session["at"] = time.monotonic()
+    return _next_session["value"]
 
 
 # Admin -------------------------------------------------------------------
@@ -133,7 +158,7 @@ def load_replay(body: ReplayBody):
     if body.session_type not in REPLAY_SESSION_TYPES:
         raise HTTPException(400, f"session_type must be one of {REPLAY_SESSION_TYPES}")
     try:
-        hub.load_replay(body.year, body.round, body.session_type)
+        hub.add_replay(body.year, body.round, body.session_type)
     except RuntimeError as e:
         raise HTTPException(409, str(e))
     return hub.status()
@@ -142,7 +167,7 @@ def load_replay(body: ReplayBody):
 @app.post("/api/admin/recording", dependencies=[Depends(require_admin)])
 def load_recording(body: RecordingBody):
     try:
-        hub.load_recording(body.name)
+        hub.import_recording(body.name)
     except ValueError as e:
         raise HTTPException(400, str(e))
     except FileNotFoundError:
@@ -152,22 +177,48 @@ def load_recording(body: RecordingBody):
     return hub.status()
 
 
+@app.delete("/api/admin/library/{session_id}", dependencies=[Depends(require_admin)])
+def delete_from_library(session_id: str):
+    try:
+        removed = hub.library.delete(session_id)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    if not removed:
+        raise HTTPException(404, "Session not found")
+    return hub.library.list()
+
+
 # Viewer stream -----------------------------------------------------------
 
 @app.websocket("/ws")
-async def stream(ws: WebSocket):
+async def stream(ws: WebSocket, session: str = "live"):
     """Send frames at the viewer's own playback position.
+
+    `session` is "live" to follow whatever session is on, or the id of a
+    library session to watch it again.
 
     Server -> browser:
       {"type": "meta", "meta": {...}, "state": {...}}  on connect and on changes
-      {"type": "frame", "state": {...}, "frame": {...}}
+      {"type": "frame", "state": {...}, "frame": {...}, "between": [{...}, ...]}
+        "between" holds the frames skipped since the last one sent, which
+        the map needs to draw cars smoothly at higher speeds
     Browser -> server:
       {"type": "play" | "pause" | "live"}
       {"type": "seek", "t": seconds} / {"type": "skip", "seconds": -10}
       {"type": "speed", "value": 4}
     """
     await ws.accept()
-    viewer = Viewer(hub.timeline)
+    follow_live = session == "live"
+    if follow_live:
+        timeline = hub.live_timeline
+    else:
+        try:
+            timeline = await asyncio.to_thread(hub.library.get, session)
+        except (KeyError, ValueError):
+            await ws.send_text(json.dumps({"type": "error", "message": "Session introuvable"}))
+            await ws.close(code=4404)
+            return
+    viewer = Viewer(timeline)
     sent_meta = None
     sent_frame_t = None
     sent_state = None
@@ -184,8 +235,9 @@ async def stream(ws: WebSocket):
     receiver = asyncio.create_task(receive_controls())
     try:
         while not receiver.done():
-            if viewer.timeline is not hub.timeline:
-                viewer.reset(hub.timeline)
+            # A new live session started
+            if follow_live and viewer.timeline is not hub.live_timeline:
+                viewer.reset(hub.live_timeline)
                 sent_meta = sent_frame_t = None
 
             timeline = viewer.timeline
@@ -199,8 +251,13 @@ async def stream(ws: WebSocket):
 
             frame_t, frame_json = timeline.frame_at(t)
             if frame_json is not None and (frame_t != sent_frame_t or state != sent_state):
+                between = []
+                # Not after a seek, the browser starts over from there anyway
+                if sent_frame_t is not None and 0 < frame_t - sent_frame_t <= max(5, 2 * state["speed"]):
+                    between = timeline.frames_between(sent_frame_t, frame_t)
                 await ws.send_text(
-                    '{"type":"frame","state":' + json.dumps(state) + ',"frame":' + frame_json + "}"
+                    '{"type":"frame","state":' + json.dumps(state) + ',"frame":' + frame_json
+                    + ',"between":[' + ",".join(between) + "]}"
                 )
                 sent_frame_t, sent_state = frame_t, state
 

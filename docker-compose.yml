@@ -8,7 +8,7 @@ services:
     restart: unless-stopped
     environment:
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:?Set ADMIN_PASSWORD in .env}
-      LIVE_AUTOSTART: ${LIVE_AUTOSTART:-0}
+      LIVE_AUTOSTART: ${LIVE_AUTOSTART:-1}
     volumes:
       - f1-data:/data
     ports:

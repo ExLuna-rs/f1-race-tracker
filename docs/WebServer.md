@@ -1,16 +1,19 @@
 # Web server (backend)
 
-`server/` is a FastAPI backend for the web version of F1 Race Replay. It serves
-three kinds of sessions through one WebSocket stream:
+`server/` is a FastAPI backend for the web version of F1 Race Replay. Viewers
+follow the live session by default, or pick one from the library:
 
-- **Live**: F1's live timing feed during a session. Every message is also
-  recorded to `data/recordings/*.jsonl`.
-- **Recording**: a recorded live session played back through the same parser.
-- **Replay**: a finished race or sprint built by the desktop app's pipeline in
-  `src/f1_data.py` (FastF1 archive, no login needed).
+- **Live**: F1's live timing feed stays connected (`LIVE_AUTOSTART=1`). Each
+  session it carries (practice, qualifying, race) gets its own timeline and
+  raw recording in `data/recordings/<key>-<meeting>-<session>.jsonl`. After a
+  restart mid-session the recording is read back, so nothing is lost.
+- **Library** (`data/library/`): every live session goes in once it ends, plus
+  the races and sprints an admin adds from FastF1's archive, built by the
+  desktop app's pipeline in `src/f1_data.py`. Each is stored once as gzipped
+  frame JSON; the last two opened stay in memory.
 
-Every browser has its own playback cursor, so one viewer can rewind or slow
-down while the others keep watching live.
+Every browser has its own playback cursor and picks its own session, so one
+viewer can rewatch a race while the others keep watching live.
 
 ## Running it
 
@@ -30,7 +33,7 @@ docker run -d -p 8000:8000 -v f1-data:/data -e ADMIN_PASSWORD=change-me f1-track
 |----------|---------|---------|
 | `F1_DATA_DIR` | `data` (`/data` in Docker) | F1 TV token and live recordings |
 | `ADMIN_PASSWORD` | unset | Enables `/api/admin/*`. Admin endpoints are off when unset |
-| `LIVE_AUTOSTART` | unset | `1` connects to live timing on startup |
+| `LIVE_AUTOSTART` | `1` in docker-compose | `1` connects to live timing on startup |
 | `SAMPLE_HZ` | `4` | Frames per second kept and sent to browsers |
 
 ## F1 TV token
@@ -71,13 +74,16 @@ the server reconnects with it straight away.
 | Method | Path | Notes |
 |--------|------|-------|
 | GET | `/api/health` | |
-| GET | `/api/status` | Current mode, session, loading state and live errors |
+| GET | `/api/status` | Live session, whether it is on (`live_active`), admin build state, live errors |
+| GET | `/api/library` | Sessions to watch again, newest first |
+| GET | `/api/next` | Next session on the calendar, for the page shown while nothing is live |
 | GET | `/api/meta` | Session, drivers, track outline, race control, stints |
 | GET | `/api/schedule/{year}` | Race weekends from FastF1 |
 | GET | `/api/recordings` | Recorded live sessions |
 | POST | `/api/admin/live/start` / `stop` | Connect to or leave the live feed |
-| POST | `/api/admin/replay` | `{"year": 2024, "round": 5, "session_type": "R"}` (`R` or `S`) |
-| POST | `/api/admin/recording` | `{"name": "2025-03-16T04-00-00Z.jsonl"}` |
+| POST | `/api/admin/replay` | Add `{"year": 2024, "round": 5, "session_type": "R"}` (`R` or `S`) to the library |
+| POST | `/api/admin/recording` | Add a raw recording `{"name": "2025-03-16T04-00-00Z.jsonl"}` to the library |
+| DELETE | `/api/admin/library/{id}` | Remove a session from the library |
 | GET/PUT/DELETE | `/api/admin/token` | F1 TV token |
 
 Admin endpoints need the `X-Admin-Password` header. Switching the session
@@ -85,17 +91,25 @@ changes it for every viewer.
 
 ## WebSocket `/ws`
 
+`/ws` follows the live session, switching by itself when the next one starts.
+`/ws?session=<id>` plays a library session; an unknown id gets
+`{"type": "error", "message": ...}` and the socket closes with code 4404.
+
 The server sends:
 
 ```json
 {"type": "meta", "meta": {...}, "state": {...}}
-{"type": "frame", "state": {...}, "frame": {...}}
+{"type": "frame", "state": {...}, "frame": {...}, "between": [{...}]}
 ```
+
+`between` holds the frames skipped since the previous message (at 4x a message
+covers four of them), so the map can draw every one of them.
 
 `meta` is sent on connect and whenever it changes (new drivers, race control
 messages, track outline). `frame` has the same shape as the desktop telemetry
-stream (see `telemetry.md`) with extra live fields per driver: `gap`,
-`interval`, `last_lap`, `best_lap`, `sectors`, `retired`, `rpm`.
+stream (see `telemetry.md`) with extra fields per driver: `gap`, `interval`,
+`last_lap`, `best_lap`, `retired`, and live only `sectors`, `rpm`. Replays
+work out their gaps from race distance, since the archive has none.
 
 `state` is the viewer's playback position:
 
@@ -131,7 +145,7 @@ back to the first clean lap any car completes.
 
 ## Known limits
 
-- Replays only support races and sprints for now. Qualifying and practice work
-  live and from recordings.
+- Archive replays only support races and sprints. Qualifying and practice get
+  into the library by being followed live.
 - The live parser was checked against the 2021 Bahrain FP3 feed from FastF1's
   test data. A live session with an F1 TV token has still not been tried.

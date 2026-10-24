@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import type { Status, TokenStatus } from "@/lib/types";
+import { formatTime, sessionLabel } from "@/lib/format";
+import type { LibraryEntry, Status, TokenStatus } from "@/lib/types";
 
 const PASSWORD_KEY = "f1-admin-password";
 
@@ -29,6 +30,7 @@ export default function Admin() {
   const [year, setYear] = useState(new Date().getFullYear());
   const [weekends, setWeekends] = useState<Weekend[] | null>(null);
   const [recordings, setRecordings] = useState<string[]>([]);
+  const [library, setLibrary] = useState<LibraryEntry[]>([]);
   const [message, setMessage] = useState<{ text: string; error: boolean } | null>(null);
 
   useEffect(() => setPassword(readPassword()), []);
@@ -64,6 +66,7 @@ export default function Admin() {
     try {
       setStatus(await call("/api/status"));
       setRecordings(await call("/api/recordings"));
+      setLibrary(await call("/api/library"));
     } catch {
       setStatus(null);
     }
@@ -123,13 +126,14 @@ export default function Admin() {
       </section>
 
       <section className="card">
-        <h2>Session en cours</h2>
+        <h2>Direct</h2>
         {status ? (
           <dl className="facts">
-            <dt>Mode</dt>
-            <dd>{status.mode}</dd>
-            <dt>Session</dt>
-            <dd>{status.session ? `${status.session.meeting} · ${status.session.name}` : "–"}</dd>
+            <dt>Séance</dt>
+            <dd>
+              {status.session ? `${status.session.meeting} · ${status.session.name}` : "–"}
+              {status.session && (status.live_active ? " (en cours)" : " (terminée)")}
+            </dd>
             <dt>Direct</dt>
             <dd>
               {status.live_running ? (status.live_connected ? "connecté" : "connexion…") : "arrêté"}
@@ -137,8 +141,8 @@ export default function Admin() {
             </dd>
             {status.loading && (
               <>
-                <dt>Chargement</dt>
-                <dd>{status.loading}… (plusieurs minutes la première fois)</dd>
+                <dt>Préparation</dt>
+                <dd>{status.loading}… (une minute environ)</dd>
               </>
             )}
             {status.error && (
@@ -159,6 +163,32 @@ export default function Admin() {
             Arrêter le direct
           </button>
         </div>
+      </section>
+
+      <section className="card">
+        <h2>Bibliothèque</h2>
+        {library.length === 0 ? (
+          <p className="hint">Vide pour l&apos;instant.</p>
+        ) : (
+          <ul className="recordings">
+            {library.map((entry) => (
+              <li key={entry.id}>
+                <span>
+                  {entry.meeting} · {sessionLabel(entry.name)} <span className="hint">({formatTime(entry.duration)})</span>
+                </span>
+                <button
+                  className="secondary"
+                  onClick={() => {
+                    if (!window.confirm(`Retirer ${entry.meeting} · ${sessionLabel(entry.name)} de la bibliothèque ?`)) return;
+                    run(() => call(`/api/admin/library/${encodeURIComponent(entry.id)}`, "DELETE"), "Retirée de la bibliothèque");
+                  }}
+                >
+                  Retirer
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
       </section>
 
       <section className="card">
@@ -203,7 +233,11 @@ export default function Admin() {
       </section>
 
       <section className="card">
-        <h2>Revoir une course</h2>
+        <h2>Ajouter une course des archives</h2>
+        <p className="hint">
+          Les séances suivies en direct entrent seules dans la bibliothèque. Ici, on y ajoute une course ou un sprint
+          passés, depuis les archives FastF1.
+        </p>
         <div className="row">
           <label>
             Saison{" "}
@@ -235,7 +269,7 @@ export default function Admin() {
                       onClick={() =>
                         run(
                           () => call("/api/admin/replay", "POST", { year, round: w.round_number, session_type: "S" }),
-                          `Chargement du sprint ${w.event_name}`,
+                          `Préparation du sprint ${w.event_name}, il sera dans la bibliothèque d'ici une minute`,
                         )
                       }
                     >
@@ -247,7 +281,7 @@ export default function Admin() {
                     onClick={() =>
                       run(
                         () => call("/api/admin/replay", "POST", { year, round: w.round_number, session_type: "R" }),
-                        `Chargement de la course ${w.event_name}`,
+                        `Préparation de la course ${w.event_name}, elle sera dans la bibliothèque d'ici une minute`,
                       )
                     }
                   >
@@ -261,8 +295,11 @@ export default function Admin() {
       </section>
 
       <section className="card">
-        <h2>Sessions enregistrées</h2>
-        <p className="hint">Chaque session suivie en direct est enregistrée, qualifs et essais compris.</p>
+        <h2>Enregistrements bruts</h2>
+        <p className="hint">
+          Le flux brut de chaque séance suivie en direct. Elles entrent déjà seules dans la bibliothèque ; ceci sert à
+          réimporter un enregistrement ou à en ajouter un fait ailleurs.
+        </p>
         {recordings.length === 0 ? (
           <p className="hint">Aucun enregistrement.</p>
         ) : (
@@ -272,9 +309,11 @@ export default function Admin() {
                 <code>{name}</code>
                 <button
                   className="secondary"
-                  onClick={() => run(() => call("/api/admin/recording", "POST", { name }), `Chargement de ${name}`)}
+                  onClick={() =>
+                    run(() => call("/api/admin/recording", "POST", { name }), `Import de ${name} dans la bibliothèque`)
+                  }
                 >
-                  Charger
+                  Ajouter à la bibliothèque
                 </button>
               </li>
             ))}

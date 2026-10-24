@@ -70,9 +70,9 @@ def test_websocket_streams_meta_then_frames(server, tmp_path):
     app_module, client = server
     path = tmp_path / "race.jsonl"
     write_recording(path, race_messages(laps=2))
-    app_module.hub.timeline = timeline_from_recording(str(path))
+    app_module.hub.library.add("aus", "live", timeline_from_recording(str(path)))
 
-    with client.websocket_connect("/ws") as ws:
+    with client.websocket_connect("/ws?session=aus") as ws:
         meta = ws.receive_json()
         assert meta["type"] == "meta"
         assert meta["meta"]["session"]["meeting"] == "Australian Grand Prix"

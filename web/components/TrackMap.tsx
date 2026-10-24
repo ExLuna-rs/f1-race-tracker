@@ -2,14 +2,15 @@
 
 import { useEffect, useRef } from "react";
 import { TRACK_STATUS } from "@/lib/format";
-import type { Stream } from "@/lib/useStream";
+import { positionAt, sampleMotion, type Stream } from "@/lib/useStream";
 import type { DriverInfo, Meta } from "@/lib/types";
 
 interface Props {
   meta: Meta;
   motion: Stream["motion"];
   selected: string | null;
-  onSelect: (code: string) => void;
+  // null when the click lands away from every car
+  onSelect: (code: string | null) => void;
 }
 
 interface Transform {
@@ -46,10 +47,6 @@ function fit(points: [number, number][], rotation: number, width: number, height
   return { scale, ox, oy, cos, sin };
 }
 
-function lerp(a: number, b: number, k: number) {
-  return a + (b - a) * k;
-}
-
 export default function TrackMap({ meta, motion, selected, onSelect }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const props = useRef({ meta, selected });
@@ -79,7 +76,9 @@ export default function TrackMap({ meta, motion, selected, onSelect }: Props) {
     const draw = () => {
       raf = requestAnimationFrame(draw);
       const { meta, selected } = props.current;
-      const { prev, cur, arrived, interval } = motion.current;
+      // Frames on either side of the moment drawn, for smooth car movement
+      const sample = sampleMotion(motion.current, performance.now());
+      const cur = sample ? sample.frames[sample.i] : null;
       const { w, h, dpr } = size;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.clearRect(0, 0, w, h);
@@ -132,8 +131,7 @@ export default function TrackMap({ meta, motion, selected, onSelect }: Props) {
         }
       }
 
-      if (!cur) return;
-      const k = Math.min((performance.now() - arrived) / interval, 1);
+      if (!sample || !cur) return;
       const info = new Map<string, DriverInfo>((meta.drivers ?? []).map((d) => [d.code, d]));
       const entries = Object.entries(cur.drivers)
         .filter(([, d]) => d.x != null && d.y != null && !d.retired)
@@ -144,11 +142,9 @@ export default function TrackMap({ meta, motion, selected, onSelect }: Props) {
       ctx.textBaseline = "middle";
       ctx.textAlign = "left";
       for (const [code, d] of entries) {
-        const before = prev?.drivers[code];
-        const x = before?.x != null ? lerp(before.x, d.x!, k) : d.x!;
-        const y = before?.y != null ? lerp(before.y, d.y!, k) : d.y!;
-        if (x === 0 && y === 0) continue;
-        const [px, py] = project(transform, x, y);
+        const position = positionAt(sample, (f) => f.drivers[code]);
+        if (!position) continue;
+        const [px, py] = project(transform, position[0], position[1]);
         hits.current.push({ code, x: px, y: py });
         const color = info.get(code)?.color ?? "#ffffff";
         const isSelected = code === selected;
@@ -170,8 +166,9 @@ export default function TrackMap({ meta, motion, selected, onSelect }: Props) {
       }
 
       const sc = cur.safety_car;
-      if (sc) {
-        const [px, py] = project(transform, sc.x, sc.y);
+      const scPosition = sc ? positionAt(sample, (f) => f.safety_car) : null;
+      if (sc && scPosition) {
+        const [px, py] = project(transform, scPosition[0], scPosition[1]);
         ctx.globalAlpha = sc.alpha ?? 1;
         ctx.fillStyle = "#ff9f1c";
         ctx.fillRect(px - 7, py - 5, 14, 10);
@@ -203,7 +200,7 @@ export default function TrackMap({ meta, motion, selected, onSelect }: Props) {
       const d = Math.hypot(hit.x - x, hit.y - y);
       if (d < 18 && (!best || d < best.d)) best = { code: hit.code, d };
     }
-    if (best) onSelect(best.code);
+    onSelect(best?.code ?? null);
   };
 
   return <canvas ref={canvasRef} className="track-map" onClick={onClick} aria-label="Carte du circuit" />;

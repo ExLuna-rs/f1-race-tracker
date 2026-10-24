@@ -12,6 +12,9 @@ interface Props {
   now: number;
 }
 
+// Spelled out so the state reads without the colour
+const DRS_LABELS = { off: "DRS", eligible: "DRS prêt", open: "DRS ouvert" };
+
 const W = 600;
 const H = 160;
 
@@ -89,7 +92,7 @@ export default function DriverPanel({ code, driver, info, samples, now }: Props)
                 <span className="gauge-unit">tr/min</span>
               </div>
             )}
-            <div className={`drs drs-${drs}`}>DRS</div>
+            <div className={`drs drs-${drs}`}>{DRS_LABELS[drs]}</div>
             <Bar label="Gaz" value={driver.throttle} color="#2fbf71" />
             <Bar label="Frein" value={brake} color="#e8002d" />
           </div>
