@@ -1,10 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { TRACK_STATUS, formatTime } from "@/lib/format";
 import type { ControlMessage, Meta, PlaybackState } from "@/lib/types";
 
 const SPEEDS = [0.5, 1, 2, 4, 8, 16, 32, 64];
+// While scrubbing, seek this often so the map follows the thumb
+const SCRUB_SEEK_MS = 150;
 
 interface Props {
   meta: Meta;
@@ -14,25 +16,49 @@ interface Props {
 
 export default function Controls({ meta, playback, send }: Props) {
   const [dragging, setDragging] = useState<number | null>(null);
+  const lastSeek = useRef(0);
   const duration = playback?.duration ?? 0;
   const t = dragging ?? playback?.t ?? 0;
   const isLive = playback?.mode === "live";
 
-  // Space toggles play, arrows skip 5 s (10 s with shift)
+  const scrub = (value: number) => {
+    setDragging(value);
+    const now = performance.now();
+    if (now - lastSeek.current >= SCRUB_SEEK_MS) {
+      lastSeek.current = now;
+      send({ type: "seek", t: value });
+    }
+  };
+  const endScrub = () => {
+    if (dragging != null) send({ type: "seek", t: dragging });
+    setDragging(null);
+  };
+
+  // Space toggles play, arrows skip 5 s (30 s with shift)
   useEffect(() => {
+    const isField = (target: EventTarget | null) =>
+      ["INPUT", "TEXTAREA", "SELECT"].includes((target as HTMLElement)?.tagName);
     const onKey = (event: KeyboardEvent) => {
-      const target = event.target as HTMLElement;
-      if (["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName)) return;
+      if (isField(event.target)) return;
       if (event.code === "Space") {
         event.preventDefault();
-        send({ type: playback?.paused ? "play" : "pause" });
+        if (!event.repeat) send({ type: playback?.paused ? "play" : "pause" });
       } else if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
         const step = event.shiftKey ? 30 : 5;
         send({ type: "skip", seconds: event.key === "ArrowLeft" ? -step : step });
       }
     };
+    // A focused button is clicked on Space's keyup: cancel it, otherwise the
+    // play button would toggle a second time right after the shortcut
+    const onKeyUp = (event: KeyboardEvent) => {
+      if (event.code === "Space" && !isField(event.target)) event.preventDefault();
+    };
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    window.addEventListener("keyup", onKeyUp);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("keyup", onKeyUp);
+    };
   }, [send, playback?.paused]);
 
   const bands = (meta.track_statuses ?? []).filter(
@@ -42,17 +68,18 @@ export default function Controls({ meta, playback, send }: Props) {
   return (
     <div className="controls">
       <div className="controls-buttons">
-        <button onClick={() => send({ type: "skip", seconds: -30 })} title="Reculer de 30 s">−30</button>
-        <button onClick={() => send({ type: "skip", seconds: -10 })} title="Reculer de 10 s">−10</button>
+        <button onClick={() => send({ type: "skip", seconds: -30 })} title="Reculer de 30 s" aria-label="Reculer de 30 secondes">−30</button>
+        <button onClick={() => send({ type: "skip", seconds: -10 })} title="Reculer de 10 s" aria-label="Reculer de 10 secondes">−10</button>
         <button
           className="play"
           onClick={() => send({ type: playback?.paused ? "play" : "pause" })}
           title={playback?.paused ? "Lecture (espace)" : "Pause (espace)"}
+          aria-label={playback?.paused ? "Lecture" : "Pause"}
         >
-          {playback?.paused ? "▶" : "❚❚"}
+          <span aria-hidden>{playback?.paused ? "▶" : "❚❚"}</span>
         </button>
-        <button onClick={() => send({ type: "skip", seconds: 10 })} title="Avancer de 10 s">+10</button>
-        <button onClick={() => send({ type: "skip", seconds: 30 })} title="Avancer de 30 s">+30</button>
+        <button onClick={() => send({ type: "skip", seconds: 10 })} title="Avancer de 10 s" aria-label="Avancer de 10 secondes">+10</button>
+        <button onClick={() => send({ type: "skip", seconds: 30 })} title="Avancer de 30 s" aria-label="Avancer de 30 secondes">+30</button>
         <select
           value={playback?.speed ?? 1}
           onChange={(e) => send({ type: "speed", value: Number(e.target.value) })}
@@ -69,8 +96,9 @@ export default function Controls({ meta, playback, send }: Props) {
             className={`live-button${playback?.live ? " on" : ""}`}
             onClick={() => send({ type: "live" })}
             title="Revenir au direct"
+            aria-pressed={!!playback?.live}
           >
-            ● DIRECT
+            <span aria-hidden>●</span> DIRECT
           </button>
         )}
       </div>
@@ -100,15 +128,9 @@ export default function Controls({ meta, playback, send }: Props) {
             max={Math.max(duration, 1)}
             step={1}
             value={Math.min(t, Math.max(duration, 1))}
-            onChange={(e) => setDragging(Number(e.target.value))}
-            onPointerUp={() => {
-              if (dragging != null) send({ type: "seek", t: dragging });
-              setDragging(null);
-            }}
-            onKeyUp={() => {
-              if (dragging != null) send({ type: "seek", t: dragging });
-              setDragging(null);
-            }}
+            onChange={(e) => scrub(Number(e.target.value))}
+            onPointerUp={endScrub}
+            onKeyUp={endScrub}
             aria-label="Position dans la session"
           />
         </div>

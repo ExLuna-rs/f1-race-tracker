@@ -257,6 +257,19 @@ class LiveState:
         numbers |= set(self.positions.keys())
         return sorted((n for n in numbers if n.isdigit()), key=int)
 
+    def _qualifying_stats(self, line):
+        """Gaps of the current part (Q1, Q2, Q3), where qualifying keeps them.
+
+        Drivers knocked out earlier have nothing in this part, so they keep the
+        gaps of the last part they set a time in.
+        """
+        stats = as_list(line.get("Stats"))
+        part = _as_int((self.topics.get("TimingData") or {}).get("SessionPart"), len(stats))
+        for entry in reversed(stats[:part]):
+            if isinstance(entry, dict) and entry.get("TimeDiffToFastest"):
+                return entry
+        return {}
+
     def _clock_at(self, utc):
         """Session time remaining, extrapolated like the official timing screen."""
         clock = self.topics.get("ExtrapolatedClock") or {}
@@ -297,6 +310,13 @@ class LiveState:
             interval = line.get("IntervalToPositionAhead")
             if interval is None:
                 interval = line.get("TimeDiffToPositionAhead")
+            if gap is None or interval is None:
+                stats = self._qualifying_stats(line)
+                if gap is None:
+                    gap = stats.get("TimeDiffToFastest")
+                if interval is None:
+                    # Spelled with a lower case "to" in the feed
+                    interval = stats.get("TimeDifftoPositionAhead", stats.get("TimeDiffToPositionAhead"))
 
             drivers[self.driver_code(number)] = {
                 "number": number,

@@ -124,7 +124,8 @@ export interface Frame {
 
 export type ServerMessage =
   | { type: "meta"; meta: Meta; state: PlaybackState }
-  | { type: "frame"; state: PlaybackState; frame: Frame };
+  | { type: "frame"; state: PlaybackState; frame: Frame; between?: Frame[] }
+  | { type: "error"; message: string };
 
 export type ControlMessage =
   | { type: "play" }
@@ -133,6 +134,25 @@ export type ControlMessage =
   | { type: "seek"; t: number }
   | { type: "skip"; seconds: number }
   | { type: "speed"; value: number };
+
+export interface LibraryEntry {
+  id: string;
+  // "live" when recorded live, "archive" when built from FastF1's archive
+  source: "live" | "archive";
+  year: number | null;
+  meeting: string;
+  name: string;
+  type: string;
+  start: string;
+  duration: number;
+}
+
+export interface NextSession {
+  meeting: string;
+  round: number;
+  name: string;
+  start: string;
+}
 
 export interface TokenStatus {
   present: boolean;
@@ -148,6 +168,8 @@ export interface Status {
   live_running: boolean;
   live_connected: boolean;
   live_error: string | null;
+  // A session is on now, not just the last one's final state
+  live_active: boolean;
   loading: string | null;
   error: string | null;
   token?: TokenStatus;
