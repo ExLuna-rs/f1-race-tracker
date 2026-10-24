@@ -175,6 +175,19 @@ To run a Sprint Qualifying session (if the event has one), add `--sprint`:
 python main.py --viewer --year 2025 --round 12 --qualifying --sprint
 ```
 
+## Web version
+
+This fork also runs in a browser, for watching a session live during a race
+weekend or replaying a finished one with friends:
+
+- [docs/WebServer.md](./docs/WebServer.md) — the FastAPI backend in `server/`
+- [docs/WebFrontend.md](./docs/WebFrontend.md) — the Next.js frontend in `web/`
+
+```bash
+echo "ADMIN_PASSWORD=choose-something" > .env
+docker compose up -d --build
+```
+
 ## File Structure
 
 ```
@@ -185,7 +198,20 @@ f1-race-replay/
 ├── README.md                     # Project documentation
 ├── roadmap.md                    # Planned features and project vision
 ├── telemetry.md                  # Telemetry stream usage and data format
-├── docs/                         # Developer guides (Insights Menu, PitWallWindow, Testing)
+├── docs/                         # Developer guides (Insights Menu, PitWallWindow, Testing, web version)
+├── docker-compose.yml            # Backend + frontend for the web version
+├── deploy/                       # Caddy route example for the web version
+├── server/                       # FastAPI backend: live timing, recordings and replays
+│   ├── app.py                    # HTTP API and the /ws viewer stream
+│   ├── hub.py                    # The session everyone is watching
+│   ├── timeline.py               # Frames of a session, shared by every viewer
+│   ├── viewer.py                 # One browser's playback cursor
+│   ├── replay.py                 # Builds a timeline from the FastF1 archive
+│   ├── circuit.py                # Circuit outline and corners for the live map
+│   ├── token_store.py            # F1 TV subscription token
+│   ├── import_recording.py       # Converts FastF1 live timing files to recordings
+│   └── live/                     # Live timing feed client and parser
+├── web/                          # Next.js frontend (track map, timing tower, telemetry)
 ├── resources/                    # Screenshots and preview images used in the docs
 ├── src/
 │   ├── f1_data.py                # Telemetry loading, processing, frame generation & SC position simulation

@@ -64,3 +64,23 @@ def deep_merge(target, update):
 def topic_name(topic):
     """Strip the ".z" suffix so compressed topics share a name with their data."""
     return topic[:-2] if topic.endswith(".z") else topic
+
+
+def as_list(value):
+    """Return a feed list, also when it only ever arrived as index-keyed updates.
+
+    Without the subscribe snapshot (for example a recording started mid
+    session) lists such as Stints or Sectors are built from {"0": ...} updates
+    and end up as dicts.
+    """
+    if isinstance(value, list):
+        return value
+    if isinstance(value, dict):
+        items = []
+        for key, item in value.items():
+            try:
+                items.append((int(key), item))
+            except (TypeError, ValueError):
+                continue
+        return [item for _, item in sorted(items, key=lambda pair: pair[0])]
+    return []

@@ -102,3 +102,74 @@ def test_meta_lists_drivers_and_session():
 
 def test_parse_utc_pads_short_fractions():
     assert parse_utc("2025-03-16T04:03:12.1Z").microsecond == 100000
+
+
+def test_lists_built_from_index_updates_are_read_in_order():
+    # A recording started mid-session never gets the snapshot that holds the lists
+    messages = [
+        ("TimingAppData", {"Lines": {"1": {"Stints": {"1": {"Compound": "HARD", "TotalLaps": 2},
+                                                      "0": {"Compound": "SOFT", "TotalLaps": 9}}}}},
+         utc(0)),
+        ("TimingData", {"Lines": {"1": {"Position": "1", "Sectors": {
+            "1": {"Value": "30.100"}, "0": {"Value": "25.000"}}}}}, utc(0)),
+        position_message(4, 1),
+    ]
+    state, frames, metas = run(messages)
+    driver = frames[-1][1]["drivers"]["1"]
+    assert driver["tyre"] == 2.0 and driver["tyre_life"] == 2.0
+    assert driver["sectors"] == ["25.000", "30.100"]
+    assert [s["compound"] for s in metas[-1]["stints"]["1"]] == ["SOFT", "HARD"]
+
+
+def test_clock_is_extrapolated_between_updates():
+    messages = initial_messages() + [
+        ("ExtrapolatedClock", {"Utc": utc(0), "Remaining": "01:00:00", "Extrapolating": True},
+         utc(0)),
+        position_message(0, 1),
+        position_message(40, 1),  # 10 seconds later
+    ]
+    _, frames, _ = run(messages)
+    assert frames[-1][1]["clock"] == "00:59:50"
+
+
+def test_session_status_falls_back_to_session_data():
+    messages = initial_messages() + [
+        ("SessionData", {"StatusSeries": {"0": {"Utc": utc(0), "SessionStatus": "Started"},
+                                          "1": {"Utc": utc(1), "TrackStatus": "Yellow"}}}, utc(1)),
+        position_message(0, 1),
+    ]
+    _, frames, _ = run(messages)
+    assert frames[-1][1]["session_status"] == "Started"
+
+
+def test_race_control_messages_get_session_times():
+    messages = initial_messages() + [
+        position_message(0, 1),
+        ("RaceControlMessages", {"Messages": [
+            {"Utc": utc(30)[:-1], "Category": "Flag", "Flag": "YELLOW", "Message": "YELLOW FLAG"},
+        ]}, utc(30)),
+    ]
+    _, _, metas = run(messages)
+    message = metas[-1]["race_control_messages"][0]
+    assert message["time"] == 30.0
+    assert message["flag"] == "YELLOW" and message["message"] == "YELLOW FLAG"
+
+
+def test_circuit_provider_supplies_outline_and_rotation():
+    calls = []
+
+    def provider(key, year):
+        calls.append((key, year))
+        return {"track": [[0, 0], [1, 1]], "rotation": 90.0, "corners": [{"number": 1}]}
+
+    messages = list(initial_messages())
+    messages[1][1]["StartDate"] = "2025-03-16T15:00:00"
+    state = LiveState(circuit_provider=provider)
+    metas = []
+    state.on_meta = metas.append
+    for topic, data, ts in messages + race_messages(laps=2):
+        state.apply(topic, data, ts)
+    assert calls == [(10, 2025)]
+    assert metas[-1]["track"] == [[0, 0], [1, 1]]
+    assert metas[-1]["rotation"] == 90.0
+    assert state.track is None  # no lap tracing needed
