@@ -212,6 +212,7 @@ f1-race-replay/
 │   ├── import_recording.py       # Converts FastF1 live timing files to recordings
 │   └── live/                     # Live timing feed client and parser
 ├── web/                          # Next.js frontend (track map, timing tower, telemetry)
+├── extension/                    # Browser extension that sends the F1 TV token to the server
 ├── resources/                    # Screenshots and preview images used in the docs
 ├── src/
 │   ├── f1_data.py                # Telemetry loading, processing, frame generation & SC position simulation

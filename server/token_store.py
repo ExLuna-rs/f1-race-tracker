@@ -56,12 +56,15 @@ class TokenStore:
         return token or None
 
     def set(self, text):
+        """Store a token. Returns the status and whether the token changed."""
         token = extract_token(text)
-        os.makedirs(os.path.dirname(self.path) or ".", exist_ok=True)
-        with open(self.path, "w", encoding="utf-8") as f:
-            f.write(token)
-        os.chmod(self.path, 0o600)
-        return self.status()
+        changed = token != self.get()
+        if changed:
+            os.makedirs(os.path.dirname(self.path) or ".", exist_ok=True)
+            with open(self.path, "w", encoding="utf-8") as f:
+                f.write(token)
+            os.chmod(self.path, 0o600)
+        return {**self.status(), "changed": changed}
 
     def clear(self):
         try:

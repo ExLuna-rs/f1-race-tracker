@@ -200,6 +200,19 @@ a {
   text-decoration: none;
 }
 
+.token-warning {
+  margin: 0 10px 10px;
+  padding: 8px 12px;
+  border: 1px solid #7a5c12;
+  border-radius: var(--radius);
+  background: #2d2410;
+  color: #ffd98a;
+}
+
+.token-warning a {
+  color: inherit;
+}
+
 /* Track map ------------------------------------------------------------- */
 
 .track-map {

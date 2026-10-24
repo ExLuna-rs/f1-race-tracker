@@ -114,3 +114,11 @@ def test_token_store_reports_expiry(tmp_path):
     assert store.status()["expired"] is True
     store.clear()
     assert store.get() is None
+
+
+def test_token_store_reports_whether_the_token_changed(tmp_path):
+    store = TokenStore(str(tmp_path / "token"))
+    token = _jwt({"exp": int(time.time()) + 3600})
+    assert store.set(token)["changed"] is True
+    assert store.set(token)["changed"] is False
+    assert store.set(_jwt({"exp": 2}))["changed"] is True

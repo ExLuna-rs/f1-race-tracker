@@ -134,6 +134,12 @@ export type ControlMessage =
   | { type: "skip"; seconds: number }
   | { type: "speed"; value: number };
 
+export interface TokenStatus {
+  present: boolean;
+  expires_at: number | null;
+  expired: boolean | null;
+}
+
 export interface Status {
   mode: Mode;
   session: SessionInfo | null;
@@ -144,4 +150,5 @@ export interface Status {
   live_error: string | null;
   loading: string | null;
   error: string | null;
+  token?: TokenStatus;
 }

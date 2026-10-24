@@ -77,6 +77,7 @@ class LiveClient:
         self.last_error = None
         self._connection = None
         self._stop = threading.Event()
+        self._reconnect_now = threading.Event()
         self._thread = None
         self._t_last_message = time.time()
 
@@ -89,6 +90,11 @@ class LiveClient:
         self._disconnect()
         if self.recorder:
             self.recorder.close()
+
+    def reconnect(self):
+        """Drop the connection so the next one picks up a new token."""
+        self._reconnect_now.set()
+        self._disconnect()
 
     def _handle(self, topic, data, utc):
         self._t_last_message = time.time()
@@ -165,5 +171,9 @@ class LiveClient:
                 self.last_error = str(e)
                 logger.warning("Live timing connection failed: %s", e)
             self._disconnect()
+            if self._reconnect_now.is_set():
+                self._reconnect_now.clear()
+                backoff = 5
+                continue
             self._stop.wait(backoff)
             backoff = min(backoff * 2, 60)
